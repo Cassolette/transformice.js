@@ -12,6 +12,7 @@ declare module "cap" {
 		static deviceList(): string[];
 
 		open(device: string, filter: string, bufSize: number, buffer: Buffer);
+		close();
 		/** WinPcap Specfic only */
 		setMinBytes(nBytes: number);
 		/**

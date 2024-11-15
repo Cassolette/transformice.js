@@ -1,104 +1,124 @@
 import { ByteArray, Client } from "@cheeseformice/transformice.js";
-import type { Connection } from "@cheeseformice/transformice.js/dist/utils";
+import { BulleIdentifier } from "@cheeseformice/transformice.js/dist/enums";
 import { TypedEmitter } from "tiny-typed-emitter";
-import { Cap, decoders } from "cap";
+import { Connection, ConnectionScanner, Scanner } from "./connection";
 
-const PROTOCOL = decoders.PROTOCOL;
-
-class Host {
-	constructor(
-		public addr: string,
-		public port: number,
-	) {}
-
-	equals(host: Host) {
-		return host.addr == this.addr && host.port == this.port;
-	}
-
-	toString() {
-		return `<Host (${this.addr}:${this.port})>`;
-	}
-}
-
-class Scanner extends TypedEmitter<{
-	data: (buf: Buffer, isOutgoing: boolean, src: Host, dest: Host) => void;
-}> {
-	protected bufSize = 10 * 1024 * 1024;
-	protected buffer: Buffer;
-	protected cap: Cap;
-
+class Session extends TypedEmitter<{
+	packetReceived: (connection: Connection, packet: ByteArray) => void;
+	packetSent: (connection: Connection, packet: ByteArray) => void;
 	/**
-	 * @param ip The IP to filter during scan.
-	 * @param device The device name to find. Leave unspecified to determine based on the first non-loopback device.
+	 * Emitted when a connection with the game server (bulle) is established.
 	 */
+	bulleConnect: (connection: Connection) => void;
+}> {
+	public bulle?: Connection;
+
 	constructor(
-		protected ip: string,
-		device?: string,
+		public sniffer: Sniffer,
+		public main: Connection,
 	) {
 		super();
+		main.on("packetSent", (packet) => this.handlePacketSent(main, packet.create()));
+		main.on("packetReceived", (packet) => this.handlePacketReceived(main, packet.create()));
+	}
 
-		this.cap = new Cap();
-		this.buffer = Buffer.alloc(65535);
+	protected handlePacketReceived(conn: Connection, packet: ByteArray) {
+		try {
+			var ccc = packet.readUnsignedShort();
+		} catch (e) {
+			//console.log("error readCode", e);
+			return;
+		}
 
-		var filter = `src ${ip} or dst ${ip}`;
-		var linkType = this.cap.open(Cap.findDevice(device), filter, this.bufSize, this.buffer);
+		if (ccc == BulleIdentifier.bulleConnection && conn == this.main) {
+			const timestamp = packet.readUnsignedInt();
+			const playerId = packet.readUnsignedInt();
+			const pcode = packet.readUnsignedInt();
+			const hostIp = packet.readUTF();
 
-		if (linkType !== "ETHERNET") throw "couldn't find the right device.";
+			packet.readUTF(); // ports
 
-		this.cap.setMinBytes && this.cap.setMinBytes(0);
+			const bulleScannerTask = this.sniffer.scanner.task(hostIp);
+			const bulleScanner = new ConnectionScanner(bulleScannerTask);
 
-		var buffer = this.buffer;
-		this.cap.on("packet", (nbytes, trunc) => {
-			var ret = decoders.Ethernet(buffer);
+			bulleScanner.on("new", (bulleConn) => {// WIP onetime sent bulle keys
+				bulleConn.on("packetSent", (packet) =>
+					this.handlePacketSent(bulleConn, packet.create()),
+				);
+				bulleConn.on("packetReceived", (packet) =>
+					this.handlePacketReceived(bulleConn, packet.create()),
+				);
+			});
+		}
+	}
 
-			if (ret.info.type !== PROTOCOL.ETHERNET.IPV4) {
-				//console.log("Caught not IPV4 packet.. ignoring");
-				return;
-			}
+	protected handlePacketSent(conn: Connection, packet: ByteArray) {
+		try {
+			var fp = packet.readShort();
+			var ccc = packet.readUnsignedShort();
+		} catch (e) {
+			//console.log("error readCode", e);
+			return;
+		}
 
-			// Decode IPV4
-			ret = decoders.IPV4(buffer, ret.offset);
-			//console.log('from: ' + ret.info.srcaddr + ' to ' + ret.info.dstaddr);
-			var srcaddr = ret.info.srcaddr;
-			var dstaddr = ret.info.dstaddr;
-
-			if (ret.info.protocol !== PROTOCOL.IP.TCP) {
-				console.log("Caught not TCP packet.. ignoring");
-				return;
-			}
-
-			var datalen = ret.info.totallen - ret.hdrlen;
-
-			// Decode TCP
-			ret = decoders.TCP(buffer, ret.offset);
-			//console.log(' from port: ' + ret.info.srcport + ' to port: ' + ret.info.dstport);
-			datalen -= ret.hdrlen;
-
-			var src = new Host(srcaddr, ret.info.srcport);
-			var dst = new Host(dstaddr, ret.info.dstport);
-			this.emit(
-				"data",
-				buffer.slice(ret.offset, ret.offset + datalen),
-				dstaddr == ip,
-				src,
-				dst,
-			);
-		});
+		if (ccc == BulleIdentifier.handshake) {
+			// Create a new session
+		} else if (ccc == BulleIdentifier.bulleConnection) {
+			const timestamp = packet.readUnsignedInt();
+			const playerId = packet.readUnsignedInt();
+			const pcode = packet.readUnsignedInt();
+		}
 	}
 }
 
-interface SnifferEvents {
-	/**
-	 * Emitted when a new old packet received.
-	 */
-	packetReceived: (connection: Connection, packet: ByteArray) => void;
-}
+class Sniffer extends TypedEmitter<{
+	newSession: (session: Session) => void;
+	//packetReceivedWithoutSession: (connection: Connection, packet: ByteArray) => void;
+	//packetSentWithoutSession: (connection: Connection, packet: ByteArray) => void;
+}> {
+	scanner: Scanner;
+	mainSocketScanner?: ConnectionScanner;
 
-class Sniffer extends TypedEmitter<SnifferEvents> {
+	constructor() {
+		super();
+		this.scanner = new Scanner();
+	}
+
+	protected handleMainOutgoingPacket(conn: Connection, packet: ByteArray) {
+		try {
+			var fp = packet.readShort();
+			var ccc = packet.readUnsignedShort();
+		} catch (e) {
+			//console.log("error readCode", e);
+			return;
+		}
+
+		if (ccc == BulleIdentifier.handshake) {
+			// Create a new session
+			const session = new Session(this, conn);
+			this.emit("newSession", session);
+		}
+	}
+
 	async start() {
+		const scanner = new Scanner();
 		const mainIp = await Client.fetchIP();
+		const mainScanner = scanner.task(mainIp.ip);
+		const mainSockScanner = new ConnectionScanner(mainScanner);
+		this.mainSocketScanner = mainSockScanner;
 
-		const mainScanner = new Scanner(mainIp.ip);
+		mainSockScanner.on("new", (conn) => {
+			conn.on("packetSent", (packet) => this.handleMainOutgoingPacket(conn, packet.create()));
+		});
+
+		// this.main = new Connection(mainScanner);
+		// this.main.on("dataIncoming", (data) => {
+		// 	this.emit("packetReceived", main, new ByteArray(data.buffer));
+		// });
+		// this.main.on("dataOutgoing", (data) => {
+		// 	this.handleOutgoingPacket(data);
+		// 	this.emit("packetSent", this.main, new ByteArray(data.buffer));
+		// });
 	}
 }
 
