@@ -1,7 +1,8 @@
 import { ByteArray, Client } from "@cheeseformice/transformice.js";
 import { BulleIdentifier } from "@cheeseformice/transformice.js/dist/enums";
 import { TypedEmitter } from "tiny-typed-emitter";
-import { Connection, ConnectionScanner, Scanner } from "./connection";
+import { ByteArrayFactory, Connection, ConnectionScanner, Scanner } from "./connection";
+import { EventWaiter } from "./utils/events";
 
 class Session extends TypedEmitter<{
 	packetReceived: (connection: Connection, packet: ByteArray) => void;
@@ -35,38 +36,66 @@ class Session extends TypedEmitter<{
 			const playerId = packet.readUnsignedInt();
 			const pcode = packet.readUnsignedInt();
 			const hostIp = packet.readUTF();
-
 			packet.readUTF(); // ports
 
 			const bulleScannerTask = this.sniffer.scanner.task(hostIp);
 			const bulleScanner = new ConnectionScanner(bulleScannerTask);
 
-			bulleScanner.on("new", (bulleConn) => {// WIP onetime sent bulle keys
+			const checkBulleConn = (bulleConn: Connection) => {
+				const checkPacketSent = (packetF: ByteArrayFactory) => {
+					const packet = packetF.create();
+					try {
+						const fp = packet.readShort();
+						var ccc = packet.readUnsignedShort();
+					} catch (e) {
+						//console.log("error readCode", e);
+						return;
+					}
+					if (ccc == BulleIdentifier.bulleConnection) {
+						const timestamp = packet.readUnsignedInt();
+						const playerId = packet.readUnsignedInt();
+						const pcode = packet.readUnsignedInt();
+
+						// bulleConn.on("packetSent", (packet) =>
+						// 	this.handlePacketSent(bulleConn, packet.create()),
+						// );
+						// bulleConn.on("packetReceived", (packet) =>
+						// 	this.handlePacketReceived(bulleConn, packet.create()),
+						// );
+
+						bulleConn.removeListener("packetSent", checkPacketSent);
+						bulleScanner.removeListener("new", checkBulleConn);
+					}
+				};
 				bulleConn.on("packetSent", (packet) =>
 					this.handlePacketSent(bulleConn, packet.create()),
 				);
-				bulleConn.on("packetReceived", (packet) =>
-					this.handlePacketReceived(bulleConn, packet.create()),
-				);
-			});
+			};
+
+			bulleScanner.on("new", checkBulleConn);
 		}
 	}
 
 	protected handlePacketSent(conn: Connection, packet: ByteArray) {
 		try {
-			var fp = packet.readShort();
+			const fp = packet.readShort();
 			var ccc = packet.readUnsignedShort();
 		} catch (e) {
 			//console.log("error readCode", e);
 			return;
 		}
 
-		if (ccc == BulleIdentifier.handshake) {
-			// Create a new session
-		} else if (ccc == BulleIdentifier.bulleConnection) {
+		if (ccc == BulleIdentifier.bulleConnection) {
 			const timestamp = packet.readUnsignedInt();
 			const playerId = packet.readUnsignedInt();
 			const pcode = packet.readUnsignedInt();
+
+			// bulleConn.on("packetSent", (packet) =>
+			// 	this.handlePacketSent(bulleConn, packet.create()),
+			// );
+			// bulleConn.on("packetReceived", (packet) =>
+			// 	this.handlePacketReceived(bulleConn, packet.create()),
+			// );
 		}
 	}
 }
@@ -86,7 +115,7 @@ class Sniffer extends TypedEmitter<{
 
 	protected handleMainOutgoingPacket(conn: Connection, packet: ByteArray) {
 		try {
-			var fp = packet.readShort();
+			const fp = packet.readShort();
 			var ccc = packet.readUnsignedShort();
 		} catch (e) {
 			//console.log("error readCode", e);
