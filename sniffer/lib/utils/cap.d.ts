@@ -1,5 +1,34 @@
 declare module "cap" {
-	import type { TypedEmitter } from "tiny-typed-emitter";
+	/// Start inline typed emitter
+	// import { TypedEmitter } from "./typed-emitter"; // See https://github.com/microsoft/TypeScript/issues/1720
+	import { EventEmitter } from "events";
+	// From `tiny-typed-emitter` package. Modified type declaration to extend `EventEmitter`.
+	type ListenerSignature<L> = {
+		[E in keyof L]: (...args: any[]) => any;
+	};
+	export class TypedEmitter<
+		L extends ListenerSignature<L> = {
+			[k: string]: (...args: any[]) => any;
+		},
+	> extends EventEmitter {
+		static defaultMaxListeners: number;
+		addListener<U extends keyof L>(event: U, listener: L[U]): this;
+		prependListener<U extends keyof L>(event: U, listener: L[U]): this;
+		prependOnceListener<U extends keyof L>(event: U, listener: L[U]): this;
+		removeListener<U extends keyof L>(event: U, listener: L[U]): this;
+		removeAllListeners(event?: keyof L): this;
+		once<U extends keyof L>(event: U, listener: L[U]): this;
+		on<U extends keyof L>(event: U, listener: L[U]): this;
+		off<U extends keyof L>(event: U, listener: L[U]): this;
+		emit<U extends keyof L>(event: U, ...args: Parameters<L[U]>): boolean;
+		eventNames<U extends keyof L>(): U[];
+		listenerCount(type: keyof L): number;
+		listeners<U extends keyof L>(type: U): L[U][];
+		rawListeners<U extends keyof L>(type: U): L[U][];
+		getMaxListeners(): number;
+		setMaxListeners(n: number): this;
+	}
+	/// End typed emitter
 
 	declare class Cap extends TypedEmitter<{
 		packet: (byteLen: number, isTruncated: boolean) => void;
@@ -7,14 +36,19 @@ declare module "cap" {
 		/**
 		 * If ip is given, the (first) device name associated with ip, or undefined is returned if not found. If ip is not given, the device name of the first non-loopback device is returned.
 		 * */
-		static findDevice(ip?: string);
+		static findDevice(ip?: string): string;
 		/** Returns a list of available devices and related information */
-		static deviceList(): string[];
+		static deviceList(): {
+			name: string;
+			description: string;
+			addresses: { addr: string; netmask?: string; broadaddr?: string; dstaddr?: string }[];
+			flags?: "PCAP_IF_LOOPBACK";
+		}[];
 
 		open(device: string, filter: string, bufSize: number, buffer: Buffer);
 		close();
 		/** WinPcap Specfic only */
-		setMinBytes(nBytes: number);
+		setMinBytes?(nBytes: number);
 		/**
 		 * Sends an arbitrary, raw packet on the opened device. `nBytes` is the number of bytes in `buffer` to send (starting from position 0) and defaults to `buffer.length`.
 		 */

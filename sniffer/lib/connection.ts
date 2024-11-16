@@ -1,5 +1,5 @@
-import { ByteArray } from "@cheeseformice/transformice.js";
-import { TypedEmitter } from "tiny-typed-emitter";
+import { ByteArray, IdentifierSplit } from "@cheeseformice/transformice.js";
+import { TypedEmitter } from "./utils/typed-emitter";
 import { Cap, decoders } from "cap";
 
 const PROTOCOL = decoders.PROTOCOL;
@@ -24,74 +24,88 @@ class ScanTask extends TypedEmitter<{
 	stopped: () => void;
 }> {
 	protected bufSize = 10 * 1024 * 1024;
-	protected buffer: Buffer;
-	protected cap: Cap;
+	protected caps: Cap[];
 	protected active: boolean;
 
 	/**
 	 * @param ip The IP to filter during scan.
-	 * @param device The device name to find. Leave unspecified to determine based on the first non-loopback device.
+	 * @-param deviceIp Scans only a device found associated with this IP. If not found or unspecified, will scan all devices known at task creation.
 	 */
-	constructor(
-		public ip: string,
-		device?: string,
-	) {
+	constructor(public ip: string) {
 		super();
 
-		this.cap = new Cap();
-		this.buffer = Buffer.alloc(65535);
+		this.caps = [];
 
-		const filter = `src ${ip} or dst ${ip}`;
-		const linkType = this.cap.open(Cap.findDevice(device), filter, this.bufSize, this.buffer);
+		const devices = Cap.deviceList();
+		for (let deviceInfo of devices) {
+			if (deviceInfo.flags === "PCAP_IF_LOOPBACK") continue;
 
-		if (linkType !== "ETHERNET") throw "couldn't find the right device.";
+			const cap = new Cap();
+			const buffer = Buffer.alloc(65535);
+			const filter = `src ${ip} or dst ${ip}`;
 
-		this.cap.setMinBytes && this.cap.setMinBytes(0);
-
-		const buffer = this.buffer;
-		this.cap.on("packet", (nbytes, trunc) => {
-			var ret = decoders.Ethernet(buffer);
-
-			if (ret.info.type !== PROTOCOL.ETHERNET.IPV4) {
-				//console.log("Caught not IPV4 packet.. ignoring");
-				return;
+			let capOk = true;
+			try {
+				const linkType = cap.open(deviceInfo.name, filter, this.bufSize, buffer);
+				if (linkType !== "ETHERNET") throw "couldn't find the right device.";
+				cap.setMinBytes?.(0);
+			} catch (e) {
+				capOk = false;
 			}
 
-			// Decode IPV4
-			ret = decoders.IPV4(buffer, ret.offset);
-			//console.log('from: ' + ret.info.srcaddr + ' to ' + ret.info.dstaddr);
-			var srcaddr = ret.info.srcaddr;
-			var dstaddr = ret.info.dstaddr;
-
-			if (ret.info.protocol !== PROTOCOL.IP.TCP) {
-				console.log("Caught not TCP packet.. ignoring");
-				return;
+			if (!capOk) {
+				cap.close();
+				continue;
 			}
 
-			var datalen = ret.info.totallen - ret.hdrlen;
+			cap.on("packet", (nbytes, trunc) => {
+				let ret = decoders.Ethernet(buffer);
 
-			// Decode TCP
-			ret = decoders.TCP(buffer, ret.offset);
-			//console.log(' from port: ' + ret.info.srcport + ' to port: ' + ret.info.dstport);
-			datalen -= ret.hdrlen;
+				if (ret.info.type !== PROTOCOL.ETHERNET.IPV4) {
+					//console.log("Caught not IPV4 packet.. ignoring");
+					return;
+				}
 
-			var src = new Host(srcaddr, ret.info.srcport);
-			var dst = new Host(dstaddr, ret.info.dstport);
-			this.emit(
-				"data",
-				buffer.slice(ret.offset, ret.offset + datalen),
-				dstaddr == ip,
-				src,
-				dst,
-			);
-		});
+				// Decode IPV4
+				ret = decoders.IPV4(buffer, ret.offset);
+				//console.log('from: ' + ret.info.srcaddr + ' to ' + ret.info.dstaddr);
+				const srcaddr = ret.info.srcaddr;
+				const dstaddr = ret.info.dstaddr;
+
+				if (ret.info.protocol !== PROTOCOL.IP.TCP) {
+					//console.log("Caught not TCP packet.. ignoring");
+					return;
+				}
+
+				let datalen = ret.info.totallen - ret.hdrlen;
+
+				// Decode TCP
+				ret = decoders.TCP(buffer, ret.offset);
+				//console.log(' from port: ' + ret.info.srcport + ' to port: ' + ret.info.dstport);
+				datalen -= ret.hdrlen;
+
+				const src = new Host(srcaddr, ret.info.srcport);
+				const dst = new Host(dstaddr, ret.info.dstport);
+				this.emit(
+					"data",
+					buffer.slice(ret.offset, ret.offset + datalen),
+					dstaddr == ip,
+					src,
+					dst,
+				);
+			});
+
+			this.caps.push(cap);
+		}
 
 		this.active = true;
 	}
 
 	stop() {
-		this.cap.close();
-		this.cap.removeAllListeners();
+		for (let cap of this.caps) {
+			cap.close();
+			cap.removeAllListeners();
+		}
 		this.active = false;
 		this.emit("stopped");
 	}
@@ -105,7 +119,7 @@ export type { ScanTask };
 export class Scanner {
 	public scanners: Map<string, ScanTask>;
 
-	constructor(public device?: string) {
+	constructor() {
 		this.scanners = new Map();
 	}
 
@@ -118,7 +132,7 @@ export class Scanner {
 		const existing = this.scanners.get(ip);
 		if (existing) return existing;
 
-		const task = new ScanTask(ip, this.device);
+		const task = new ScanTask(ip);
 		this.scanners.set(ip, task);
 		task.on("stopped", () => {
 			this.scanners.delete(ip);
@@ -194,21 +208,22 @@ export class ByteArrayFactory {
  * Emulates a socket connection.
  */
 export class Connection extends TypedEmitter<{
-	packetReceived: (packet: ByteArrayFactory) => void;
-	packetSent: (packet: ByteArrayFactory) => void;
+	packetReceived: (packetFactory: ByteArrayFactory) => void;
+	packetSent: (packetFactory: ByteArrayFactory) => void;
 	closed: () => void;
 }> {
-	fingerprint: number;
 	inbound: PacketReader;
 	outbound: PacketReader;
-	active: boolean = true; // tbc - socket inactive after timeout detect
+	active: boolean = true;
+	/** The amount of time in milliseconds without incoming data before a socket connection is considered closed */
+	aliveTimeout: number = 20000;
+	protected latestTimeConsideredAlive?: number;
 
 	constructor(
 		public client: Host,
 		public server: Host,
 	) {
 		super();
-		this.fingerprint = 0;
 		this.inbound = new PacketReader(0);
 		this.outbound = new PacketReader(1);
 
@@ -219,7 +234,6 @@ export class Connection extends TypedEmitter<{
 		this.outbound.on("new", (packet) => {
 			this.emit("packetSent", new ByteArrayFactory(packet));
 		});
-		// close and error TBC
 	}
 
 	consume(data: Buffer, isOutgoing: boolean) {
@@ -228,27 +242,65 @@ export class Connection extends TypedEmitter<{
 		// Consume payload
 		const reader = isOutgoing ? this.outbound : this.inbound;
 		reader.consume(data);
+
+		this.latestTimeConsideredAlive = Date.now() + this.aliveTimeout;
+	}
+
+	close() {
+		this.active = false;
+		this.emit("closed");
+	}
+
+	aliveTick() {
+		if (
+			this.active &&
+			this.latestTimeConsideredAlive &&
+			Date.now() > this.latestTimeConsideredAlive
+		) {
+			this.close();
+		}
 	}
 }
 
-/**
- * Manages list of known socket connections found by `ScanTask`.
- */
-export class ConnectionScanner extends TypedEmitter<{
+export interface ConnectionScannerEvents {
 	new: (conn: Connection) => void;
-}> {
+	packetReceived: (conn: Connection, packetFactory: ByteArrayFactory) => void;
+	packetSent: (conn: Connection, packetFactory: ByteArrayFactory) => void;
+}
+
+/**
+ * Manages list of known socket connections found by `Connection`.
+ */
+export class ConnectionScanner extends TypedEmitter<ConnectionScannerEvents> {
 	sockets: Map<string, Connection>;
+	started: boolean;
+	private loopTimer?: ReturnType<typeof setInterval>;
 
 	constructor(public scanner: ScanTask) {
 		super();
-
 		this.sockets = new Map();
+		this.started = false;
+	}
 
-		scanner.on("data", (data, isOutgoing, src, dest) => {
+	public start() {
+		this.scanner.on("data", (data, isOutgoing, src, dest) => {
+			//console.debug("tcpdata", isOutgoing, src, dest);
 			const client = isOutgoing ? src : dest;
 			const server = isOutgoing ? dest : src;
 			this.getSocket(client, server).consume(data, isOutgoing);
 		});
+
+		this.loopTimer = setInterval(() => {
+			this.sockets.forEach((socket) => socket.aliveTick());
+		}, 2000);
+	}
+
+	public stop() {
+		this.sockets.forEach((socket) => {
+			socket.close();
+			socket.removeAllListeners();
+		});
+		this.sockets.clear();
 	}
 
 	protected socketIdentifier(client: Host, server: Host) {
@@ -260,11 +312,17 @@ export class ConnectionScanner extends TypedEmitter<{
 		const existing = this.sockets.get(id);
 		if (existing) return existing;
 
+		//console.debug("new conn detected", client, server);
 		const socket = new Connection(client, server);
 		this.sockets.set(id, socket);
+		socket.on("packetReceived", (packet) => this.emit("packetReceived", socket, packet));
+		socket.on("packetSent", (packet) => this.emit("packetSent", socket, packet));
 		socket.on("closed", () => {
 			this.sockets.delete(id);
+			socket.removeAllListeners();
+			//console.debug("dead conn", client, server);
 		});
+		this.emit("new", socket);
 
 		return socket;
 	}

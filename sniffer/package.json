@@ -6,17 +6,22 @@
     "start": "bun run ./main.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest",
     "@cheeseformice/transformice.js": "^1.2.0",
-    "over-the-wire": "^1.0.3",
-    "tiny-typed-emitter": "^2.1.0"
+    "@types/bun": "latest",
+    "@types/node": "^22.9.0",
+    "cap": "^0.2.1",
+    "over-the-wire": "^1.0.3"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
   },
-  "trustedDependencies": ["over-the-wire"],
+  "trustedDependencies": [
+    "cap",
+    "es5-ext",
+    "over-the-wire"
+  ],
   "dependencies": {
-    "@types/node": "^22.9.0",
-    "cap": "^0.2.1"
+    "chokidar": "^4.0.1",
+    "eventemitter2": "^6.4.9"
   }
 }

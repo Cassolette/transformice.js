@@ -1,12 +1,26 @@
-import { ByteArray } from "@cheeseformice/transformice.js";
-import { Connection } from "@cheeseformice/transformice.js/dist/utils";
-import { Sniffer } from "./sniffer";
+import { type Session, type SessionEvents } from "./sniffer";
+import { TypedEmitter } from "./utils/typed-emitter";
 
-export interface UserPluginHandler {
-	onPacketReceived: (conn: Connection, packet: ByteArray) => void;
-	onPacketSent: (conn: Connection, packet: ByteArray) => void;
+/**
+ * Proxy to `Session` that only exists for the lifetime of the user plugin.
+ */
+export class SessionProxy extends TypedEmitter<SessionEvents> {
+	constructor(private session: Session) {
+		super({ captureRejections: true });
+	}
+
+	get main() {
+		return this.session.main;
+	}
+	get bulle() {
+		return this.session.bulle;
+	}
+	get active() {
+		return this.session.active;
+	}
+	
 }
 
 export interface UserPlugin {
-	init: (sniffer: Sniffer) => UserPluginHandler;
+	eventNewSession?: (session: SessionProxy) => void;
 }

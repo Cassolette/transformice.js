@@ -1,3 +1,4 @@
+import { TypedEmitter } from "cap";
 import { EventEmitter } from "events";
 
 interface IEventWaiterOptions {
@@ -23,7 +24,7 @@ interface IWaitForOptions<F extends unknown[]> {
 }
 
 export class EventWaiter<Events = { [event: string | symbol]: (...args: any[]) => void }> {
-    constructor(public emitter: EventEmitter, private options: IEventWaiterOptions = {}) {}
+    constructor(public emitter: TypedEmitter, private options: IEventWaiterOptions = {}) {}
 
     /**
      * Waits for an event to emit.
