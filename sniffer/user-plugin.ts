@@ -10,7 +10,7 @@ class CustomPlugin {
 		} catch (e) {
 			return;
 		}
-		console.log(s
+		console.log(
 			`new packet ${IdentifierSplit(ccc)} from ${conn === session.main ? "monde" : "bulle"}`,
 		);
 
@@ -52,12 +52,15 @@ class CustomPlugin {
 const plugin = new CustomPlugin();
 export default {
 	eventNewSession(session) {
-        console.log("new session")
+		console.log("new session");
 		session.on("packetReceived", (conn, packetFactory) =>
 			plugin.onPacketReceived(session, conn, packetFactory.create()),
 		);
 		session.on("packetSent", (conn, packetFactory) =>
 			plugin.onPacketSent(session, conn, packetFactory.create()),
 		);
+		session.on("error", (e) => {
+			console.error(e);
+		});
 	},
 } as UserPlugin;

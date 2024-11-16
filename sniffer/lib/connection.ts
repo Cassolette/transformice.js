@@ -211,6 +211,7 @@ export class Connection extends TypedEmitter<{
 	packetReceived: (packetFactory: ByteArrayFactory) => void;
 	packetSent: (packetFactory: ByteArrayFactory) => void;
 	closed: () => void;
+	error: (e: any) => void;
 }> {
 	inbound: PacketReader;
 	outbound: PacketReader;
@@ -228,12 +229,16 @@ export class Connection extends TypedEmitter<{
 		this.outbound = new PacketReader(1);
 
 		this.inbound.on("new", (packet) => {
-			this.emit("packetReceived", new ByteArrayFactory(packet));
+			this.emitAsync("packetReceived", new ByteArrayFactory(packet)).catch(this.handleErr);
 		});
 
 		this.outbound.on("new", (packet) => {
-			this.emit("packetSent", new ByteArrayFactory(packet));
+			this.emitAsync("packetSent", new ByteArrayFactory(packet)).catch(this.handleErr);
 		});
+	}
+
+	protected handleErr(e: any) {
+		this.emit("error", e);
 	}
 
 	consume(data: Buffer, isOutgoing: boolean) {
@@ -248,7 +253,7 @@ export class Connection extends TypedEmitter<{
 
 	close() {
 		this.active = false;
-		this.emit("closed");
+		this.emitAsync("closed").catch(this.handleErr);
 	}
 
 	aliveTick() {

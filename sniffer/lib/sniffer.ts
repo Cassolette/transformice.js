@@ -42,11 +42,13 @@ class Session extends TypedEmitter<SessionEvents> {
 		main.on("packetSent", (packetFactory) => {
 			const packetMinusFp = packetFactory.create();
 			const fp = packetFactory.create().readByte();
-			this.emit("packetSent", main, new ByteArrayFactory(packetMinusFp), fp);
+			this.emitAsync("packetSent", main, new ByteArrayFactory(packetMinusFp), fp).catch(
+				this.handleErr,
+			);
 		});
 		main.on("packetReceived", (packet) => {
 			this.handlePacketReceived(main, packet.create());
-			this.emit("packetReceived", main, packet);
+			this.emitAsync("packetReceived", main, packet).catch(this.handleErr);
 		});
 		main.on("closed", () => {
 			this.active = false;
@@ -54,11 +56,15 @@ class Session extends TypedEmitter<SessionEvents> {
 		});
 	}
 
+	protected handleErr(e: any) {
+		this.emit("error", e);
+	}
+
 	protected async handlePacketReceived(conn: Connection, packet: ByteArray) {
 		try {
 			var ccc = packet.readUnsignedShort();
 		} catch (e) {
-			//console.log("error readCode", e);
+			console.log("error readCode", e);
 			return;
 		}
 
@@ -72,44 +78,40 @@ class Session extends TypedEmitter<SessionEvents> {
 			const bulleScannerTask = this.sniffer.scanner.task(hostIp);
 			const bulleScanner = new ConnectionScanner(bulleScannerTask);
 			bulleScanner.start();
-			const [bulle, _] = await new EventWaiter<ConnectionScannerEvents>(bulleScanner).waitFor(
-				"packetSent",
-				{
-					timeout: 20000,
-					condition: (_, packetFactory) => {
-						const packet = packetFactory.create();
-						try {
-							packet.readByte(); // fp
-							var ccc = packet.readUnsignedShort();
-						} catch (e) {
-							return false;
-						}
-						//console.log("bsend", IdentifierSplit(ccc));
-						if (ccc == BulleIdentifier.bulleConnection) {
-							const bTimestamp = packet.readUnsignedInt();
-							const bPlayerId = packet.readUnsignedInt();
-							const bPcode = packet.readUnsignedInt();
-							return (
-								bTimestamp === timestamp &&
-								bPlayerId === playerId &&
-								bPcode === pcode
-							);
-						}
+
+			const [bulle, _] = await bulleScanner.waitFor("packetSent", {
+				timeout: 20000,
+				filter: (_, packetFactory) => {
+					const packet = packetFactory.create();
+					try {
+						packet.readByte(); // fp
+						var ccc = packet.readUnsignedShort();
+					} catch (e) {
 						return false;
-					},
+					}
+					//console.log("bsend", IdentifierSplit(ccc));
+					if (ccc == BulleIdentifier.bulleConnection) {
+						const bTimestamp = packet.readUnsignedInt();
+						const bPlayerId = packet.readUnsignedInt();
+						const bPcode = packet.readUnsignedInt();
+						return (
+							bTimestamp === timestamp && bPlayerId === playerId && bPcode === pcode
+						);
+					}
+					return false;
 				},
-			);
+			});
 
 			this.bulle = bulle;
 			bulle.on("packetSent", (packetFactory) => {
 				const packetMinusFp = packetFactory.create();
 				const fp = packetFactory.create().readByte();
-				this.emit("packetSent", bulle, new ByteArrayFactory(packetMinusFp), fp);
+				this.emitAsync("packetSent", bulle, new ByteArrayFactory(packetMinusFp), fp).catch(this.handleErr);
 			});
 			bulle.on("packetReceived", (packet) => {
-				this.emit("packetReceived", bulle, packet);
+				this.emitAsync("packetReceived", bulle, packet).catch(this.handleErr);
 			});
-			this.emit("bulleConnect", bulle);
+			this.emitAsync("bulleConnect", bulle).catch(this.handleErr);
 		}
 	}
 }

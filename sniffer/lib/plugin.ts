@@ -6,7 +6,7 @@ import { TypedEmitter } from "./utils/typed-emitter";
  */
 export class SessionProxy extends TypedEmitter<SessionEvents> {
 	constructor(private session: Session) {
-		super({ captureRejections: true });
+		super();
 	}
 
 	get main() {

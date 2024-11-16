@@ -24,7 +24,7 @@ interface IWaitForOptions<F extends unknown[]> {
 }
 
 export class EventWaiter<Events = { [event: string | symbol]: (...args: any[]) => void }> {
-    constructor(public emitter: TypedEmitter, private options: IEventWaiterOptions = {}) {}
+    constructor(public emitter: EventEmitter, private options: IEventWaiterOptions = {}) {}
 
     /**
      * Waits for an event to emit.

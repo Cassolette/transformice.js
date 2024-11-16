@@ -1,5 +1,5 @@
 import { watch } from "chokidar";
-import { Sniffer, type Session } from "./lib/sniffer";
+import { SessionEvents, Sniffer, type Session } from "./lib/sniffer";
 import { SessionProxy, type UserPlugin } from "./lib/plugin";
 
 (async () => {
@@ -12,11 +12,19 @@ import { SessionProxy, type UserPlugin } from "./lib/plugin";
 
 	function addSessionProxy(session: Session) {
 		const sessionProxy = new SessionProxy(session);
-		session.on("bulleConnect", (...args) => sessionProxy.emit("bulleConnect", ...args));
-		session.on("closed", (...args) => sessionProxy.emit("closed", ...args));
-		session.on("packetReceived", (...args) => sessionProxy.emit("packetReceived", ...args));
-		session.on("packetSent", (...args) => sessionProxy.emit("packetSent", ...args));
-		sessionProxy.on("error", (e) => console.error(e))
+
+		for (const evt of [
+			"bulleConnect",
+			"closed",
+			"packetReceived",
+			"packetSent",
+			"error",
+		] as (keyof SessionEvents)[]) {
+			session.on(evt, (...args: any) => {
+				sessionProxy.emitAsync(evt, ...args).catch((e) => console.error(e));
+			});
+		}
+		sessionProxy.on("error", (e) => console.error(e));
 		activeSessionProxies.add(sessionProxy);
 		userPlugin.eventNewSession?.(sessionProxy);
 	}
@@ -29,7 +37,7 @@ import { SessionProxy, type UserPlugin } from "./lib/plugin";
 	function loadUserPlugin() {
 		activeSessionProxies.forEach((s) => s.removeAllListeners());
 		activeSessionProxies.clear();
-		
+
 		try {
 			const decache = (moduleName: string) => {
 				moduleName = require.resolve(moduleName);
