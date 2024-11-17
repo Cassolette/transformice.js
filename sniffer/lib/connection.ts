@@ -38,8 +38,9 @@ class ScanTask extends TypedEmitter<{
 
 		const devices = Cap.deviceList();
 		for (let deviceInfo of devices) {
+			if (!deviceInfo.description.includes("Wi-Fi 6E AX210")) continue
 			if (deviceInfo.flags === "PCAP_IF_LOOPBACK") continue;
-
+			console.debug(deviceInfo.description)
 			const cap = new Cap();
 			const buffer = Buffer.alloc(65535);
 			const filter = `src ${ip} or dst ${ip}`;
@@ -48,7 +49,7 @@ class ScanTask extends TypedEmitter<{
 			try {
 				const linkType = cap.open(deviceInfo.name, filter, this.bufSize, buffer);
 				if (linkType !== "ETHERNET") throw "couldn't find the right device.";
-				cap.setMinBytes?.(0);
+				cap.setMinBytes!(1);
 			} catch (e) {
 				capOk = false;
 			}
@@ -158,14 +159,18 @@ class PacketReader extends TypedEmitter<{
 	}
 
 	consume(data: Buffer) {
+		//if (data.length <=0) return
+		console.debug("a", this.extra, data.length)
 		this.buffer = Buffer.concat([this.buffer, data]);
+		console.debug("acont", [...this.buffer].toString())
 		while (this.buffer.length > this.length) {
+			console.debug("pcmp", this.buffer.length, this.length)
 			if (this.length == 0) {
 				let flag = false;
 				for (let i = 0; i < 5; i++) {
 					const byte = this.buffer.slice(0, 1)[0];
 					this.buffer = this.buffer.slice(1);
-					this.length |= (byte & 127) << (i * 7);
+					this.length |= (byte & 0x7f) << (i * 7);
 
 					if (!(byte & 0x80)) {
 						flag = true;
@@ -178,10 +183,13 @@ class PacketReader extends TypedEmitter<{
 				this.length += this.extra;
 			}
 
+			console.debug("cmp", this.buffer.length, this.length)
 			if (this.buffer.length >= this.length) {
-				this.emit("new", new ByteArray(this.buffer.slice(0, this.length)));
+				console.debug("tfmpack", [...this.buffer.slice(0, this.length)].toString())
+				this.emit("new", new ByteArray(this.buffer.slice(0, this.length)));				
 				this.buffer = this.buffer.slice(this.length);
 				this.length = 0;
+				console.debug("lcmp", this.buffer.length, this.length)
 			}
 		}
 	}
@@ -192,7 +200,7 @@ export class ByteArrayFactory {
 	writePosition: number;
 	readPosition: number;
 	constructor(packet: ByteArray) {
-		this.buffer = packet.buffer;
+		this.buffer = Buffer.from(packet.buffer);
 		this.writePosition = packet.writePosition;
 		this.readPosition = packet.readPosition;
 	}
@@ -317,7 +325,7 @@ export class ConnectionScanner extends TypedEmitter<ConnectionScannerEvents> {
 		const existing = this.sockets.get(id);
 		if (existing) return existing;
 
-		//console.debug("new conn detected", client, server);
+		console.debug("new conn detected", client, server);
 		const socket = new Connection(client, server);
 		this.sockets.set(id, socket);
 		socket.on("packetReceived", (packet) => this.emit("packetReceived", socket, packet));
@@ -325,7 +333,7 @@ export class ConnectionScanner extends TypedEmitter<ConnectionScannerEvents> {
 		socket.on("closed", () => {
 			this.sockets.delete(id);
 			socket.removeAllListeners();
-			//console.debug("dead conn", client, server);
+			console.debug("dead conn", client, server);
 		});
 		this.emit("new", socket);
 
