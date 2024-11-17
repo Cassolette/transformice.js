@@ -10,9 +10,16 @@ class CustomPlugin {
 		} catch (e) {
 			return;
 		}
-		console.log(
-			`new packet ${IdentifierSplit(ccc)} from ${conn === session.main ? "monde" : "bulle"}`,
-		);
+
+		if (
+			![Identifier(60, 3), Identifier(28, 6), Identifier(4, 9), Identifier(144, 48)].includes(
+				ccc,
+			) ||
+			conn === session.bulle
+		)
+			console.log(
+				`new packet ${IdentifierSplit(ccc)} from ${conn === session.main ? "monde" : "bulle"}`,
+			);
 
 		switch (ccc) {
 			case Identifier(5, 2): {
@@ -42,23 +49,57 @@ class CustomPlugin {
 
 				console.log("room:", name, official ? "(official)" : "");
 				console.log("bulle ip:", session.bulle?.server);
+				break;
+			}
+			case Identifier(28, 6): {
+				console.log("s-ping req id", packet.readByte());
+				console.log("s-ping need reply to: ", packet.readBoolean() ? "main" : "bulle");
+				break;
 			}
 		}
 	}
 
-	onPacketSent(session: SessionProxy, conn: Connection, packet: ByteArray) {}
+	onPacketSent(session: SessionProxy, conn: Connection, packet: ByteArray, fp: number) {
+		try {
+			var ccc = packet.readUnsignedShort();
+		} catch (e) {
+			return;
+		}
+
+		if (
+			![Identifier(149, 26), Identifier(28, 6), Identifier(26, 26)].includes(ccc) ||
+			conn === session.bulle
+		)
+			console.log(
+				`send packet ${IdentifierSplit(ccc)} to ${conn === session.main ? "monde" : "bulle"}`,
+			);
+
+		switch (ccc) {
+			case Identifier(8, 30): {
+				//console.log("ping send", packet.readByte())
+				break;
+			}
+            case Identifier(28, 6): {
+                console.log("s-ping send reply req id", packet.readByte(), conn === session.main ? "(main conn)": "(bulle conn)");
+				break;
+			}
+		}
+	}
 }
 
 const plugin = new CustomPlugin();
 export default {
 	eventNewSession(session) {
 		console.log("new session");
-		session.on("packetReceived", (conn, packetFactory) =>
+		session.on("packetReceived", async (conn, packetFactory) =>
 			plugin.onPacketReceived(session, conn, packetFactory.create()),
 		);
-		session.on("packetSent", (conn, packetFactory) =>
-			plugin.onPacketSent(session, conn, packetFactory.create()),
+		session.on("packetSent", (conn, packetFactory, fp) =>
+			plugin.onPacketSent(session, conn, packetFactory.create(), fp),
 		);
+		session.on("bulleConnect", (conn) => {
+			console.log("bulle connection", conn.server);
+		});
 		session.on("error", (e) => {
 			console.error(e);
 		});

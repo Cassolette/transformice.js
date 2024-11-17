@@ -41,14 +41,14 @@ class Session extends TypedEmitter<SessionEvents> {
 
 		main.on("packetSent", (packetFactory) => {
 			const packetMinusFp = packetFactory.create();
-			const fp = packetFactory.create().readByte();
+			const fp = packetMinusFp.readByte();
 			this.emitAsync("packetSent", main, new ByteArrayFactory(packetMinusFp), fp).catch(
 				this.handleErr,
 			);
 		});
-		main.on("packetReceived", (packet) => {
-			this.handlePacketReceived(main, packet.create());
-			this.emitAsync("packetReceived", main, packet).catch(this.handleErr);
+		main.on("packetReceived", (packetFactory) => {
+			this.handlePacketReceived(main, packetFactory.create());
+			this.emitAsync("packetReceived", main, packetFactory).catch(this.handleErr);
 		});
 		main.on("closed", () => {
 			this.active = false;
@@ -64,7 +64,7 @@ class Session extends TypedEmitter<SessionEvents> {
 		try {
 			var ccc = packet.readUnsignedShort();
 		} catch (e) {
-			console.log("error readCode", e);
+			//console.log("error readCode", e);
 			return;
 		}
 
@@ -105,7 +105,7 @@ class Session extends TypedEmitter<SessionEvents> {
 			this.bulle = bulle;
 			bulle.on("packetSent", (packetFactory) => {
 				const packetMinusFp = packetFactory.create();
-				const fp = packetFactory.create().readByte();
+				const fp = packetMinusFp.readByte();
 				this.emitAsync("packetSent", bulle, new ByteArrayFactory(packetMinusFp), fp).catch(this.handleErr);
 			});
 			bulle.on("packetReceived", (packet) => {

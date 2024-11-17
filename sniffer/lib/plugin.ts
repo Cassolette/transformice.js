@@ -9,6 +9,7 @@ export class SessionProxy extends TypedEmitter<SessionEvents> {
 		super();
 	}
 
+	// tbc connection proxy
 	get main() {
 		return this.session.main;
 	}
