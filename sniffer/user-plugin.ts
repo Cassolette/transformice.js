@@ -11,13 +11,9 @@ class CustomPlugin {
 			return;
 		}
 
-		if (! (
-			[Identifier(144, 48)].includes(ccc) ||
-			(conn === session.main && [Identifier(60, 3), Identifier(28, 6), Identifier(4, 9)].includes(ccc))
-		))
-			console.log(
-				`new packet ${IdentifierSplit(ccc)} from ${conn === session.main ? "monde" : "bulle"}`,
-			);
+		console.log(
+			`new packet ${IdentifierSplit(ccc)} from ${conn === session.main ? "monde" : "bulle"}`,
+		);
 
 		switch (ccc) {
 			case Identifier(5, 2): {
@@ -64,19 +60,11 @@ class CustomPlugin {
 			return;
 		}
 
-		if (! (
-			[Identifier(149, 26)].includes(ccc) ||
-			(conn === session.main && [Identifier(28, 6), Identifier(26, 26)].includes(ccc))
-		))
-			console.log(
-				`send packet ${IdentifierSplit(ccc)} to ${conn === session.main ? "monde" : "bulle"}`,
-			);
+		console.log(
+			`send packet ${IdentifierSplit(ccc)} to ${conn === session.main ? "monde" : "bulle"}`,
+		);
 
 		switch (ccc) {
-			case Identifier(8, 30): {
-				//console.log("ping send", packet.readByte())
-				break;
-			}
 			case Identifier(28, 6): {
 				console.log(
 					"s-ping send reply req id",

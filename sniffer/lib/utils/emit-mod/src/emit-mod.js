@@ -12,6 +12,7 @@ class EventEmitter extends events_1.EventEmitter {
      * If `eventName` is `"error"`, any exceptions are logged via `process.emitWarning()`.
      */
     emitSafe(eventName, ...args) {
+        var _a;
         let ret = false;
         if (eventName !== "error") {
             try {
@@ -32,7 +33,7 @@ class EventEmitter extends events_1.EventEmitter {
                 ret = this.emit(eventName, ...args);
             }
             catch (e) {
-                process.emitWarning(new Error(`While emitting an error event safely, an error handler threw exception synchronously.\nError handler exception: ${e?.toString()}\nError handler arg: ${args[0]?.toString()}`));
+                process.emitWarning(new Error(`While emitting an error event safely, an error handler threw exception synchronously.\nError handler exception: ${e === null || e === void 0 ? void 0 : e.toString()}\nError handler arg: ${(_a = args[0]) === null || _a === void 0 ? void 0 : _a.toString()}`));
             }
         }
         return ret;
@@ -45,7 +46,7 @@ class EventEmitter extends events_1.EventEmitter {
         return new Promise((resolve, reject) => {
             var timer;
             const listener = (...args) => {
-                if (options?.condition && options.condition(...args) !== true) {
+                if ((options === null || options === void 0 ? void 0 : options.condition) && options.condition(...args) !== true) {
                     return;
                 }
                 if (timer) {
@@ -55,11 +56,11 @@ class EventEmitter extends events_1.EventEmitter {
                 resolve(args);
             };
             this.on(eventName, listener);
-            const timeout = options?.timeout;
+            const timeout = options === null || options === void 0 ? void 0 : options.timeout;
             if (timeout) {
                 timer = setTimeout(() => {
                     this.off(eventName, listener);
-                    reject("Timed out after ");
+                    reject(`Timed out after ${timeout}ms`);
                 }, timeout);
             }
         });

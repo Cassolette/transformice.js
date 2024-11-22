@@ -2,6 +2,11 @@ import { watch } from "chokidar";
 import { SessionEvents, Sniffer, type Session } from "./lib/sniffer";
 import { SessionProxy, type UserPlugin } from "./lib/plugin";
 
+import SegfaultHandler from "segfault-raub"
+SegfaultHandler.setLogPath("crash.log");
+SegfaultHandler.setSignal(SegfaultHandler.EXCEPTION_ALL, true);
+
+
 (async () => {
 	const activeSessions: Set<Session> = new Set();
 	const activeSessionProxies: Set<SessionProxy> = new Set();
@@ -54,7 +59,7 @@ import { SessionProxy, type UserPlugin } from "./lib/plugin";
 			return false;
 		}
 
-		if (!userPlugin.eventNewSession) {
+		if (!userPlugin?.eventNewSession) {
 			console.warn("Notice: eventNewSession is null");
 		}
 

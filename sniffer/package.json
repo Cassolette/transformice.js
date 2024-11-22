@@ -8,9 +8,7 @@
   "devDependencies": {
     "@cheeseformice/transformice.js": "^1.2.0",
     "@types/bun": "latest",
-    "@types/node": "^22.9.0",
-    "cap": "^0.2.1",
-    "over-the-wire": "^1.0.3"
+    "@types/node": "^22.9.0"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
@@ -18,10 +16,12 @@
   "trustedDependencies": [
     "cap",
     "es5-ext",
-    "over-the-wire"
+    "over-the-wire",
+    "segfault-raub"
   ],
   "dependencies": {
+    "cap": "^0.2.1",
     "chokidar": "^4.0.1",
-    "eventemitter2": "^6.4.9"
+    "segfault-raub": "^3.0.1"
   }
 }

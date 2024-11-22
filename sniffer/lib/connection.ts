@@ -22,31 +22,46 @@ export class Host {
 class ScanTask extends EventEmitter<{
 	data: (buf: Buffer, isOutgoing: boolean, src: Host, dest: Host) => void;
 	stopped: () => void;
+	error: (e: any) => void;
 }> {
-	protected bufSize = 10 * 1024 * 1024;
+	/**
+	 * The max size of `Buffer` to allow pcap to memcpy to during each packet capture dispatch.
+	 * Minimally should be snaplen plus any potential padding. Too low values will result in
+	 * truncated packets and bring the stream of buffers out of alignment and possibly stop the
+	 * program from working properly.
+	 */
+	// TCP IPV4 snaplen + bpfhdr_len
+	protected capBufSize = 65535 + 18;
+	/**
+	 * Internal buffer size used by pcap to store captured bufs.
+	 */
+	protected pcapInternalBufSize = 10 * 1024 * 1024;
 	protected caps: Cap[];
 	protected active: boolean;
 
 	/**
 	 * @param ip The IP to filter during scan.
-	 * @-param deviceIp Scans only a device found associated with this IP. If not found or unspecified, will scan all devices known at task creation.
 	 */
 	constructor(public ip: string) {
 		super();
 
 		this.caps = [];
 
-		const devices = Cap.deviceList();
-		for (let deviceInfo of devices) {
+		for (const deviceInfo of Cap.deviceList()) {
 			if (deviceInfo.flags === "PCAP_IF_LOOPBACK") continue;
 
 			const cap = new Cap();
-			const buffer = Buffer.alloc(65535);
+			const buffer = Buffer.alloc(this.capBufSize);
 			const filter = `src ${ip} or dst ${ip}`;
 
 			let capOk = true;
 			try {
-				const linkType = cap.open(deviceInfo.name, filter, this.bufSize, buffer);
+				const linkType = cap.open(
+					deviceInfo.name,
+					filter,
+					this.pcapInternalBufSize,
+					buffer,
+				);
 				if (linkType !== "ETHERNET") throw "couldn't find the right device.";
 				cap.setMinBytes?.(0);
 			} catch (e) {
@@ -59,46 +74,70 @@ class ScanTask extends EventEmitter<{
 			}
 
 			cap.on("packet", (nbytes, trunc) => {
-				let ret = decoders.Ethernet(buffer);
-
-				if (ret.info.type !== PROTOCOL.ETHERNET.IPV4) {
-					//console.log("Caught not IPV4 packet.. ignoring");
-					return;
+				if (trunc) {
+					this.emitSafe(
+						"error",
+						Error(
+							`Critical error! Found truncated TCP packet which could corrupt the stream. This can usually be fixed by increasing the \`Buffer\` allocation (\`capBufSize\`) higher than the TCP capture length.`,
+						),
+					);
 				}
-
-				// Decode IPV4
-				ret = decoders.IPV4(buffer, ret.offset);
-				//console.log('from: ' + ret.info.srcaddr + ' to ' + ret.info.dstaddr);
-				const srcaddr = ret.info.srcaddr;
-				const dstaddr = ret.info.dstaddr;
-
-				if (ret.info.protocol !== PROTOCOL.IP.TCP) {
-					//console.log("Caught not TCP packet.. ignoring");
-					return;
+				try {
+					const decoded = this.#parseTcpPacket(buffer);
+					if (decoded) {
+						this.emit(
+							"data",
+							decoded.data,
+							decoded.dst.addr == ip,
+							decoded.src,
+							decoded.dst,
+						);
+					}
+				} catch (e) {
+					this.emit("error", e);
 				}
-
-				let datalen = ret.info.totallen - ret.hdrlen;
-
-				// Decode TCP
-				ret = decoders.TCP(buffer, ret.offset);
-				//console.log(' from port: ' + ret.info.srcport + ' to port: ' + ret.info.dstport);
-				datalen -= ret.hdrlen;
-
-				const src = new Host(srcaddr, ret.info.srcport);
-				const dst = new Host(dstaddr, ret.info.dstport);
-				this.emit(
-					"data",
-					Buffer.from(buffer.subarray(ret.offset, ret.offset + datalen)),
-					dstaddr == ip,
-					src,
-					dst,
-				);
 			});
 
 			this.caps.push(cap);
 		}
 
 		this.active = true;
+	}
+
+	#parseTcpPacket(buffer: Buffer) {
+		let ret = decoders.Ethernet(buffer);
+
+		if (ret.info.type !== PROTOCOL.ETHERNET.IPV4) {
+			//console.log("Caught not IPV4 packet.. ignoring");
+			return null;
+		}
+
+		// Decode IPV4
+		ret = decoders.IPV4(buffer, ret.offset);
+		//console.log('from: ' + ret.info.srcaddr + ' to ' + ret.info.dstaddr);
+		const srcaddr = ret.info.srcaddr;
+		const dstaddr = ret.info.dstaddr;
+
+		if (ret.info.protocol !== PROTOCOL.IP.TCP) {
+			//console.log("Caught not TCP packet.. ignoring");
+			return null;
+		}
+
+		let datalen = ret.info.totallen - ret.hdrlen;
+
+		// Decode TCP
+		ret = decoders.TCP(buffer, ret.offset);
+		//console.log(' from port: ' + ret.info.srcport + ' to port: ' + ret.info.dstport);
+		datalen -= ret.hdrlen;
+
+		const src = new Host(srcaddr, ret.info.srcport);
+		const dst = new Host(dstaddr, ret.info.dstport);
+
+		return {
+			src,
+			dst,
+			data: Buffer.from(buffer.subarray(ret.offset, ret.offset + datalen)),
+		};
 	}
 
 	stop() {
@@ -162,7 +201,7 @@ class PacketReader extends EventEmitter<{
 		//console.debug("==============")
 		//console.debug("a", this.extra, data.length)
 		//console.debug("acont", [...this.buffer].toString())
-		while (this.buffer.length > this.length) {
+		while (this.buffer.length > 0 && this.buffer.length >= this.length) {
 			//console.debug("pcmp", this.buffer.length, this.length)
 			if (this.length == 0) {
 				let flag = false;
@@ -335,8 +374,12 @@ export class ConnectionScanner extends EventEmitter<ConnectionScannerEvents> {
 		//console.debug("new conn detected", client, server);
 		const socket = new Connection(client, server);
 		this.sockets.set(id, socket);
-		socket.on("packetReceived", (packetFactory) => this.emitSafe("packetReceived", socket, packetFactory));
-		socket.on("packetSent", (packetFactory) => this.emitSafe("packetSent", socket, packetFactory));
+		socket.on("packetReceived", (packetFactory) =>
+			this.emitSafe("packetReceived", socket, packetFactory),
+		);
+		socket.on("packetSent", (packetFactory) =>
+			this.emitSafe("packetSent", socket, packetFactory),
+		);
 		socket.on("closed", () => {
 			this.sockets.delete(id);
 			socket.removeAllListeners();

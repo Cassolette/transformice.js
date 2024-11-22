@@ -1,13 +1,13 @@
 {
   "compilerOptions": {
+    // For ES5 compat
+    // "lib": ["ES2015"],
+    // "target": "ES5",
+    // "module": "Node16",
     // Enable latest features
-    "lib": ["ESNext", "DOM"],
-    "target": "ESNext",
-    "module": "NodeNext",
-    "moduleDetection": "force",
-
-    // Bundler mode
-    "moduleResolution": "nodenext",
+    "lib": ["ES6"],
+    "target": "ES6",
+    "module": "Node16",
 
     // Best practices
     "strict": true,

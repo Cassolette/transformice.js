@@ -63,7 +63,7 @@ export class EventEmitter extends NodeEventEmitter {
 			if (timeout) {
 				timer = setTimeout(() => {
 					this.off(eventName as string | symbol, listener);
-					reject("Timed out after ");
+					reject(`Timed out after ${timeout}ms`);
 				}, timeout);
 			}
 		});
