@@ -1,5 +1,5 @@
 import { ByteArray, IdentifierSplit } from "@cheeseformice/transformice.js";
-import { TypedEmitter } from "./utils/typed-emitter";
+import { EventEmitter } from "./utils/emit-mod";
 import { Cap, decoders } from "cap";
 
 const PROTOCOL = decoders.PROTOCOL;
@@ -19,7 +19,7 @@ export class Host {
 	}
 }
 
-class ScanTask extends TypedEmitter<{
+class ScanTask extends EventEmitter<{
 	data: (buf: Buffer, isOutgoing: boolean, src: Host, dest: Host) => void;
 	stopped: () => void;
 }> {
@@ -142,7 +142,7 @@ export class Scanner {
 	}
 }
 
-class PacketReader extends TypedEmitter<{
+class PacketReader extends EventEmitter<{
 	/**
 	 * @param packet Emitted when a new packet received from main or bulle connection.
 	 */
@@ -224,7 +224,7 @@ export class ByteArrayFactory {
 /**
  * Emulates a socket connection.
  */
-export class Connection extends TypedEmitter<{
+export class Connection extends EventEmitter<{
 	/** Packet received (0 offset read) */
 	packetReceived: (packetFactory: ByteArrayFactory) => void;
 	/** Packet sent (0 offset read) */
@@ -248,16 +248,12 @@ export class Connection extends TypedEmitter<{
 		this.outbound = new PacketReader(1);
 
 		this.inbound.on("new", (packet) => {
-			this.emitAsync("packetReceived", new ByteArrayFactory(packet)).catch(this.handleErr);
+			this.emitSafe("packetReceived", new ByteArrayFactory(packet));
 		});
 
 		this.outbound.on("new", (packet) => {
-			this.emitAsync("packetSent", new ByteArrayFactory(packet)).catch(this.handleErr);
+			this.emitSafe("packetSent", new ByteArrayFactory(packet));
 		});
-	}
-
-	protected handleErr(e: any) {
-		this.emit("error", e);
 	}
 
 	consume(data: Buffer, isOutgoing: boolean) {
@@ -272,7 +268,7 @@ export class Connection extends TypedEmitter<{
 
 	close() {
 		this.active = false;
-		this.emitAsync("closed").catch(this.handleErr);
+		this.emitSafe("closed");
 	}
 
 	aliveTick() {
@@ -295,7 +291,7 @@ export interface ConnectionScannerEvents {
 /**
  * Manages list of known socket connections found by `Connection`.
  */
-export class ConnectionScanner extends TypedEmitter<ConnectionScannerEvents> {
+export class ConnectionScanner extends EventEmitter<ConnectionScannerEvents> {
 	sockets: Map<string, Connection>;
 	started: boolean;
 	private loopTimer?: ReturnType<typeof setInterval>;
@@ -339,14 +335,14 @@ export class ConnectionScanner extends TypedEmitter<ConnectionScannerEvents> {
 		//console.debug("new conn detected", client, server);
 		const socket = new Connection(client, server);
 		this.sockets.set(id, socket);
-		socket.on("packetReceived", (packetFactory) => this.emit("packetReceived", socket, packetFactory));
-		socket.on("packetSent", (packetFactory) => this.emit("packetSent", socket, packetFactory));
+		socket.on("packetReceived", (packetFactory) => this.emitSafe("packetReceived", socket, packetFactory));
+		socket.on("packetSent", (packetFactory) => this.emitSafe("packetSent", socket, packetFactory));
 		socket.on("closed", () => {
 			this.sockets.delete(id);
 			socket.removeAllListeners();
 			//console.debug("dead conn", client, server);
 		});
-		this.emit("new", socket);
+		this.emitSafe("new", socket);
 
 		return socket;
 	}

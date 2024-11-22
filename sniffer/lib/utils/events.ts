@@ -1,4 +1,3 @@
-import { TypedEmitter } from "cap";
 import { EventEmitter } from "events";
 
 interface IEventWaiterOptions {

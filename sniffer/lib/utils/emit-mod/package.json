@@ -1,0 +1,13 @@
+{
+  "name": "emit-mod",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

@@ -9,9 +9,11 @@ import { SessionProxy, type UserPlugin } from "./lib/plugin";
 
 	const sniffer = new Sniffer();
 	await sniffer.start();
+	sniffer.on("error", (e) => console.error(e));
 
 	function addSessionProxy(session: Session) {
 		const sessionProxy = new SessionProxy(session);
+		sessionProxy.on("error", (e) => console.error(e));
 
 		for (const evt of [
 			"bulleConnect",
@@ -21,7 +23,7 @@ import { SessionProxy, type UserPlugin } from "./lib/plugin";
 			"error",
 		] as (keyof SessionEvents)[]) {
 			session.on(evt, (...args: any) => {
-				sessionProxy.emitAsync(evt, ...args).catch((e) => console.error(e));
+				sessionProxy.emitSafe(evt, ...args);
 			});
 		}
 		sessionProxy.on("error", (e) => console.error(e));

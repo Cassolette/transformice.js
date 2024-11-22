@@ -11,12 +11,10 @@ class CustomPlugin {
 			return;
 		}
 
-		if (
-			![Identifier(60, 3), Identifier(28, 6), Identifier(4, 9), Identifier(144, 48)].includes(
-				ccc,
-			) ||
-			conn === session.bulle
-		)
+		if (! (
+			[Identifier(144, 48)].includes(ccc) ||
+			(conn === session.main && [Identifier(60, 3), Identifier(28, 6), Identifier(4, 9)].includes(ccc))
+		))
 			console.log(
 				`new packet ${IdentifierSplit(ccc)} from ${conn === session.main ? "monde" : "bulle"}`,
 			);
@@ -66,10 +64,10 @@ class CustomPlugin {
 			return;
 		}
 
-		if (
-			![Identifier(149, 26), Identifier(28, 6), Identifier(26, 26)].includes(ccc) ||
-			conn === session.bulle
-		)
+		if (! (
+			[Identifier(149, 26)].includes(ccc) ||
+			(conn === session.main && [Identifier(28, 6), Identifier(26, 26)].includes(ccc))
+		))
 			console.log(
 				`send packet ${IdentifierSplit(ccc)} to ${conn === session.main ? "monde" : "bulle"}`,
 			);
@@ -79,8 +77,12 @@ class CustomPlugin {
 				//console.log("ping send", packet.readByte())
 				break;
 			}
-            case Identifier(28, 6): {
-                console.log("s-ping send reply req id", packet.readByte(), conn === session.main ? "(main conn)": "(bulle conn)");
+			case Identifier(28, 6): {
+				console.log(
+					"s-ping send reply req id",
+					packet.readByte(),
+					conn === session.main ? "(main conn)" : "(bulle conn)",
+				);
 				break;
 			}
 		}

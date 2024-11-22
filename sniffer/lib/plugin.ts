@@ -1,10 +1,10 @@
 import { type Session, type SessionEvents } from "./sniffer";
-import { TypedEmitter } from "./utils/typed-emitter";
+import { EventEmitter } from "./utils/emit-mod";
 
 /**
  * Proxy to `Session` that only exists for the lifetime of the user plugin.
  */
-export class SessionProxy extends TypedEmitter<SessionEvents> {
+export class SessionProxy extends EventEmitter<SessionEvents> {
 	constructor(private session: Session) {
 		super();
 	}

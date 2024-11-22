@@ -1,6 +1,6 @@
 import { ByteArray, Client, IdentifierSplit } from "@cheeseformice/transformice.js";
 import { BulleIdentifier } from "@cheeseformice/transformice.js/dist/enums";
-import { TypedEmitter } from "./utils/typed-emitter";
+import { EventEmitter } from "./utils/emit-mod";
 import {
 	ByteArrayFactory,
 	Connection,
@@ -8,7 +8,6 @@ import {
 	type ConnectionScannerEvents,
 	Scanner,
 } from "./connection";
-import { EventWaiter } from "./utils/events";
 
 export interface SessionEvents {
 	packetReceived: (connection: Connection, packetFactory: ByteArrayFactory) => void;
@@ -25,7 +24,7 @@ export interface SessionEvents {
 	error: (e: any) => void;
 }
 
-class Session extends TypedEmitter<SessionEvents> {
+class Session extends EventEmitter<SessionEvents> {
 	public bulle?: Connection;
 	public active: boolean;
 
@@ -42,22 +41,16 @@ class Session extends TypedEmitter<SessionEvents> {
 		main.on("packetSent", (packetFactory) => {
 			const packetMinusFp = packetFactory.create();
 			const fp = packetMinusFp.readByte();
-			this.emitAsync("packetSent", main, new ByteArrayFactory(packetMinusFp), fp).catch(
-				this.handleErr,
-			);
+			this.emitSafe("packetSent", main, new ByteArrayFactory(packetMinusFp), fp);
 		});
 		main.on("packetReceived", (packetFactory) => {
 			this.handlePacketReceived(main, packetFactory.create());
-			this.emitAsync("packetReceived", main, packetFactory).catch(this.handleErr);
+			this.emitSafe("packetReceived", main, packetFactory);
 		});
 		main.on("closed", () => {
 			this.active = false;
-			this.emit("closed");
+			this.emitSafe("closed");
 		});
-	}
-
-	protected handleErr(e: any) {
-		this.emit("error", e);
 	}
 
 	protected async handlePacketReceived(conn: Connection, packet: ByteArray) {
@@ -81,7 +74,7 @@ class Session extends TypedEmitter<SessionEvents> {
 
 			const [bulle, _] = await bulleScanner.waitFor("packetSent", {
 				timeout: 20000,
-				filter: (_, packetFactory) => {
+				condition: (_, packetFactory) => {
 					const packet = packetFactory.create();
 					try {
 						packet.readByte(); // fp
@@ -106,22 +99,23 @@ class Session extends TypedEmitter<SessionEvents> {
 			bulle.on("packetSent", (packetFactory) => {
 				const packetMinusFp = packetFactory.create();
 				const fp = packetMinusFp.readByte();
-				this.emitAsync("packetSent", bulle, new ByteArrayFactory(packetMinusFp), fp).catch(this.handleErr);
+				this.emitSafe("packetSent", bulle, new ByteArrayFactory(packetMinusFp), fp);
 			});
 			bulle.on("packetReceived", (packet) => {
-				this.emitAsync("packetReceived", bulle, packet).catch(this.handleErr);
+				this.emitSafe("packetReceived", bulle, packet);
 			});
-			this.emitAsync("bulleConnect", bulle).catch(this.handleErr);
+			this.emitSafe("bulleConnect", bulle);
 		}
 	}
 }
 
 export type { Session };
 
-export class Sniffer extends TypedEmitter<{
+export class Sniffer extends EventEmitter<{
 	newSession: (session: Session) => void;
 	//packetReceivedWithoutSession: (connection: Connection, packet: ByteArray) => void;
 	//packetSentWithoutSession: (connection: Connection, packet: ByteArray) => void;
+	error: (e: any) => void;
 }> {
 	scanner: Scanner;
 	mainSocketScanner?: ConnectionScanner;
@@ -143,7 +137,7 @@ export class Sniffer extends TypedEmitter<{
 		if (ccc == BulleIdentifier.handshake) {
 			// Create a new session
 			const session = new Session(this, conn);
-			this.emit("newSession", session);
+			this.emitSafe("newSession", session);
 		}
 	}
 
