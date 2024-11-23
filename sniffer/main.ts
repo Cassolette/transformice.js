@@ -2,15 +2,14 @@ import { watch } from "chokidar";
 import { SessionEvents, Sniffer, type Session } from "./lib/sniffer";
 import { SessionProxy, type UserPlugin } from "./lib/plugin";
 
-import SegfaultHandler from "segfault-raub"
+import SegfaultHandler from "segfault-raub";
 SegfaultHandler.setLogPath("crash.log");
 SegfaultHandler.setSignal(SegfaultHandler.EXCEPTION_ALL, true);
-
 
 (async () => {
 	const activeSessions: Set<Session> = new Set();
 	const activeSessionProxies: Set<SessionProxy> = new Set();
-	let userPlugin: UserPlugin = {};
+	let userPlugin: UserPlugin | undefined;
 
 	const sniffer = new Sniffer();
 	await sniffer.start();
@@ -18,32 +17,23 @@ SegfaultHandler.setSignal(SegfaultHandler.EXCEPTION_ALL, true);
 
 	function addSessionProxy(session: Session) {
 		const sessionProxy = new SessionProxy(session);
-		sessionProxy.on("error", (e) => console.error(e));
-
-		for (const evt of [
-			"bulleConnect",
-			"closed",
-			"packetReceived",
-			"packetSent",
-			"error",
-		] as (keyof SessionEvents)[]) {
-			session.on(evt, (...args: any) => {
-				sessionProxy.emitSafe(evt, ...args);
-			});
-		}
+		sessionProxy.on("closed", () => activeSessionProxies.delete(sessionProxy));
 		sessionProxy.on("error", (e) => console.error(e));
 		activeSessionProxies.add(sessionProxy);
-		userPlugin.eventNewSession?.(sessionProxy);
+		userPlugin?.eventNewSession?.(sessionProxy);
 	}
 
 	sniffer.on("newSession", (session) => {
+		session.on("closed", () => {
+			activeSessions.delete(session);
+		});
 		activeSessions.add(session);
 		addSessionProxy(session);
 	});
 
 	function loadUserPlugin() {
-		activeSessionProxies.forEach((s) => s.removeAllListeners());
-		activeSessionProxies.clear();
+		activeSessionProxies.forEach((s) => s.close());
+		//activeSessionProxies.clear();
 
 		try {
 			const decache = (moduleName: string) => {

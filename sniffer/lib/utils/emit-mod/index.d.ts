@@ -36,8 +36,6 @@ export class EventEmitter<
 	listenerCount(type: keyof L): number;
 	listeners<U extends keyof L>(type: U): L[U][];
 	rawListeners<U extends keyof L>(type: U): L[U][];
-	getMaxListeners(): number;
-	setMaxListeners(n: number): this;
 	/**
 	 * Emit listeners safely without synchronous exceptions thrown (async listeners are still
 	 * subject to usual `EventEmitter` behaviour). Exceptions are sent the same way as
