@@ -17,8 +17,11 @@ SegfaultHandler.setSignal(SegfaultHandler.EXCEPTION_ALL, true);
 
 	function addSessionProxy(session: Session) {
 		const sessionProxy = new SessionProxy(session);
-		sessionProxy.on("closed", () => activeSessionProxies.delete(sessionProxy));
 		sessionProxy.on("error", (e) => console.error(e));
+		sessionProxy.once("closed", () => {
+			sessionProxy.removeAllListeners();
+			activeSessionProxies.delete(sessionProxy);
+		});
 		activeSessionProxies.add(sessionProxy);
 		userPlugin?.eventNewSession?.(sessionProxy);
 	}

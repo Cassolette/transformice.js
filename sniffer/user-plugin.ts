@@ -1,10 +1,9 @@
 import { Identifier, IdentifierSplit, type ByteArray } from "@cheeseformice/transformice.js";
-import type { Connection } from "./lib/connection";
-import type { SessionProxy, UserPlugin } from "./lib/plugin";
 import zlib from "node:zlib";
+import type { ConnectionProxy, SessionProxy, UserPlugin } from "./lib/plugin";
 
 class CustomPlugin {
-	onPacketReceived(session: SessionProxy, conn: Connection, packet: ByteArray) {
+	onPacketReceived(session: SessionProxy, conn: ConnectionProxy, packet: ByteArray) {
 		try {
 			var ccc = packet.readUnsignedShort();
 		} catch (e) {
@@ -53,7 +52,7 @@ class CustomPlugin {
 		}
 	}
 
-	onPacketSent(session: SessionProxy, conn: Connection, packet: ByteArray, fp: number) {
+	onPacketSent(session: SessionProxy, conn: ConnectionProxy, packet: ByteArray, fp: number) {
 		try {
 			var ccc = packet.readUnsignedShort();
 		} catch (e) {

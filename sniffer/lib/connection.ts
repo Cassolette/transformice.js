@@ -260,17 +260,19 @@ export class ByteArrayFactory {
 	}
 }
 
-/**
- * Emulates a socket connection.
- */
-export class Connection extends EventEmitter<{
+export interface ConnectionEvents {
 	/** Packet received (0 offset read) */
 	packetReceived: (packetFactory: ByteArrayFactory) => void;
 	/** Packet sent (0 offset read) */
 	packetSent: (packetFactory: ByteArrayFactory) => void;
 	closed: () => void;
 	error: (e: any) => void;
-}> {
+}
+
+/**
+ * Emulates a socket connection.
+ */
+export class Connection extends EventEmitter<ConnectionEvents> {
 	inbound: PacketReader;
 	outbound: PacketReader;
 	active: boolean = true;
@@ -306,6 +308,7 @@ export class Connection extends EventEmitter<{
 	}
 
 	close() {
+		if (!this.active) return;
 		this.active = false;
 		this.emitSafe("closed");
 	}

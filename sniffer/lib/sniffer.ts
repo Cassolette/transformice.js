@@ -19,7 +19,7 @@ export interface SessionEvents {
 	/**
 	 * Emitted when a connection with the game server (bulle) is established.
 	 */
-	bulleConnect: (connection: Connection) => void;
+	bulleConnect: (connection: Connection, changedFrom?: Connection) => void;
 	closed: () => void;
 	error: (e: any) => void;
 }
@@ -50,6 +50,7 @@ class Session extends EventEmitter<SessionEvents> {
 		main.on("closed", () => {
 			this.active = false;
 			this.emitSafe("closed");
+			main.removeAllListeners();
 		});
 	}
 
@@ -95,6 +96,9 @@ class Session extends EventEmitter<SessionEvents> {
 				},
 			});
 
+			const prevBulle = this.bulle
+			prevBulle?.close();
+
 			this.bulle = bulle;
 			bulle.on("packetSent", (packetFactory) => {
 				const packetMinusFp = packetFactory.create();
@@ -104,7 +108,11 @@ class Session extends EventEmitter<SessionEvents> {
 			bulle.on("packetReceived", (packet) => {
 				this.emitSafe("packetReceived", bulle, packet);
 			});
-			this.emitSafe("bulleConnect", bulle);
+			bulle.once("closed", () => {
+				bulle.removeAllListeners();
+				this.bulle = undefined;
+			});
+			this.emitSafe("bulleConnect", bulle, prevBulle);
 		}
 	}
 }
