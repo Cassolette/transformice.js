@@ -71,6 +71,10 @@ class Session extends EventEmitter<SessionEvents> {
 
 			const bulleScannerTask = this.sniffer.scanner.task(hostIp);
 			const bulleScanner = new ConnectionScanner(bulleScannerTask);
+			bulleScanner.once("allSocketsClosed", () => {
+				// no need to keep the scanner running if no sockets are active
+				bulleScanner.stop();
+			});
 			bulleScanner.start();
 
 			const [bulle, _] = await bulleScanner.waitFor("packetSent", {
@@ -119,6 +123,7 @@ class Session extends EventEmitter<SessionEvents> {
 
 export type { Session };
 
+// TODO: Support sniffer stop & IP retry. At the moment, sniffer will only scan the same main IP indefinitely.
 export class Sniffer extends EventEmitter<{
 	newSession: (session: Session) => void;
 	//packetReceivedWithoutSession: (connection: Connection, packet: ByteArray) => void;
@@ -157,6 +162,10 @@ export class Sniffer extends EventEmitter<{
 		mainSockScanner.on("packetSent", (conn, packetFactory) =>
 			this.handleMainOutgoingPacket(conn, packetFactory.create()),
 		);
+		mainSockScanner.once("stopped", () => {
+			// shouldn't be stopping as there are no code paths to stop the main scanner at the moment
+			console.error("Main socket scanner stopped unexpectedly");
+		});
 		mainSockScanner.start();
 		this.mainSocketScanner = mainSockScanner;
 	}

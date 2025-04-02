@@ -327,6 +327,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
 export interface ConnectionScannerEvents {
 	new: (conn: Connection) => void;
 	stopped: () => void;
+	allSocketsClosed: () => void;
 	packetReceived: (conn: Connection, packetFactory: ByteArrayFactory) => void;
 	packetSent: (conn: Connection, packetFactory: ByteArrayFactory) => void;
 }
@@ -400,9 +401,8 @@ export class ConnectionScanner extends EventEmitter<ConnectionScannerEvents> {
 			socket.removeAllListeners();
 			//console.debug("dead conn", client, server);
 
-			// no need to keep the scanner running if no sockets are active
 			if (this.sockets.size == 0) {
-				this.stop();
+				this.emitSafe("allSocketsClosed");
 			}
 		});
 		this.emitSafe("new", socket);
