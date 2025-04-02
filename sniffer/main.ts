@@ -66,7 +66,7 @@ SegfaultHandler.setSignal(SegfaultHandler.EXCEPTION_ALL, true);
 	});
 
 	watcher.on("change", (path, stats) => {
-		console.log(`Reloading plugin (${path}, ${stats.size}).`);
+		console.log(`Reloading plugin (${path}, ${stats?.size ?? "null"}).`);
 		const startTime = performance.now();
 		loadUserPlugin();
 		console.log(`Plugin reloaded in (${performance.now() - startTime}).`);

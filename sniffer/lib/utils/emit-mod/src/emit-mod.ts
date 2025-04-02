@@ -1,8 +1,19 @@
 import { EventEmitter as NodeEventEmitter, captureRejectionSymbol } from "events";
+import { type On2Options } from "../index";
 
 export class EventEmitter extends NodeEventEmitter {
 	constructor() {
 		super({ captureRejections: true });
+	}
+
+	on2(eventName: string | symbol, listener: () => any, options?: On2Options) {
+		const _ = this.on(eventName, listener);
+		if (options?.signal) {
+			options.signal.addEventListener("abort", () => {
+				this.off(eventName, listener);
+			}, { once: true });
+		}
+		return _;
 	}
 
 	/**

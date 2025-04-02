@@ -173,7 +173,7 @@ export class Scanner {
 
 		const task = new ScanTask(ip);
 		this.scanners.set(ip, task);
-		task.on("stopped", () => {
+		task.once("stopped", () => {
 			this.scanners.delete(ip);
 		});
 
@@ -326,6 +326,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
 
 export interface ConnectionScannerEvents {
 	new: (conn: Connection) => void;
+	stopped: () => void;
 	packetReceived: (conn: Connection, packetFactory: ByteArrayFactory) => void;
 	packetSent: (conn: Connection, packetFactory: ByteArrayFactory) => void;
 }
@@ -337,6 +338,7 @@ export class ConnectionScanner extends EventEmitter<ConnectionScannerEvents> {
 	sockets: Map<string, Connection>;
 	started: boolean;
 	private loopTimer?: ReturnType<typeof setInterval>;
+	private abortController?: AbortController;
 
 	constructor(public scanner: ScanTask) {
 		super();
@@ -345,16 +347,21 @@ export class ConnectionScanner extends EventEmitter<ConnectionScannerEvents> {
 	}
 
 	public start() {
-		this.scanner.on("data", (data, isOutgoing, src, dest) => {
+		if (this.started) return;
+
+		this.abortController = new AbortController();
+		this.scanner.on2("data", (data, isOutgoing, src, dest) => {
 			//console.debug("tcpdata", isOutgoing, src, dest);
 			const client = isOutgoing ? src : dest;
 			const server = isOutgoing ? dest : src;
 			this.getSocket(client, server).consume(data, isOutgoing);
-		});
+		}, { signal: this.abortController.signal });
 
 		this.loopTimer = setInterval(() => {
 			this.sockets.forEach((socket) => socket.aliveTick());
 		}, 2000);
+
+		this.started = true;
 	}
 
 	public stop() {
@@ -363,6 +370,11 @@ export class ConnectionScanner extends EventEmitter<ConnectionScannerEvents> {
 			socket.removeAllListeners();
 		});
 		this.sockets.clear();
+		this.loopTimer && clearInterval(this.loopTimer);
+		this.abortController?.abort();
+
+		this.started = false;
+		this.emitSafe("stopped");
 	}
 
 	protected socketIdentifier(client: Host, server: Host) {
@@ -387,6 +399,11 @@ export class ConnectionScanner extends EventEmitter<ConnectionScannerEvents> {
 			this.sockets.delete(id);
 			socket.removeAllListeners();
 			//console.debug("dead conn", client, server);
+
+			// no need to keep the scanner running if no sockets are active
+			if (this.sockets.size == 0) {
+				this.stop();
+			}
 		});
 		this.emitSafe("new", socket);
 

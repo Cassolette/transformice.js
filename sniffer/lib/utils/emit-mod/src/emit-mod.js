@@ -6,6 +6,15 @@ class EventEmitter extends events_1.EventEmitter {
     constructor() {
         super({ captureRejections: true });
     }
+    on2(eventName, listener, options) {
+        const _ = this.on(eventName, listener);
+        if (options === null || options === void 0 ? void 0 : options.signal) {
+            options.signal.addEventListener("abort", () => {
+                this.off(eventName, listener);
+            }, { once: true });
+        }
+        return _;
+    }
     /**
      * Emit listeners safely without synchronous exceptions thrown (async listeners are still subject to usual `EventEmitter` behaviour).
      * Exceptions are sent the same way as exceptions from async listeners (`error` event, or rejetion symbol if defined).

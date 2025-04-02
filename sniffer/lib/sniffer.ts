@@ -96,7 +96,7 @@ class Session extends EventEmitter<SessionEvents> {
 				},
 			});
 
-			const prevBulle = this.bulle
+			const prevBulle = this.bulle;
 			prevBulle?.close();
 
 			this.bulle = bulle;

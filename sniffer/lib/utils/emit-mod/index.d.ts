@@ -14,6 +14,15 @@ export interface IWaitForOptions<F extends unknown[]> {
 	condition?: (...args: F) => boolean;
 }
 
+interface On2Options {
+	/**
+	 * The listener will be removed when the abort() method of the AbortController which
+	 * owns the AbortSignal is called. If not specified, no AbortSignal is associated
+	 * with the listener.
+	 */
+	signal?: AbortSignal;
+}
+
 type ListenerSignature<L> = {
 	[E in keyof L]: (...args: any[]) => any;
 };
@@ -30,6 +39,26 @@ export class EventEmitter<
 	removeAllListeners(eventName?: keyof L): this;
 	once<U extends keyof L>(eventName: U, listener: L[U]): this;
 	on<U extends keyof L>(eventName: U, listener: L[U]): this;
+	/**
+	 * Adds the `listener` function to the end of the listeners array for the event
+	 * named `eventName`. Works similarly to `EventEmitter.on()`, but extends it further
+	 * with an optional third argument allowing for extra features such as an abort
+	 * listener.
+	 *
+	 * ```js
+	 * const controller = AbortController();
+	 * server.on2('connection', (stream) => {
+	 *   console.log('someone connected!');
+	 * }, { signal: controller.signal });
+	 * controller.abort(); // 'someone connected!' will not be printed
+	 * ```
+	 *
+	 * Returns a reference to the `EventEmitter`, so that calls can be chained.
+	 * @param eventName The name of the event.
+	 * @param listener The callback function
+	 * @param options An object that specifies characteristics about the event listener.
+	 */
+	on2<U extends keyof L>(eventName: U, listener: L[U], options?: On2Options): this;
 	off<U extends keyof L>(eventName: U, listener: L[U]): this;
 	emit<U extends keyof L>(eventName: U, ...args: Parameters<L[U]>): boolean;
 	eventNames<U extends keyof L>(): U[];
