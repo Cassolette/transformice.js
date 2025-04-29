@@ -30,8 +30,8 @@ class ScanTask extends EventEmitter<{
 	 * truncated packets and bring the stream of buffers out of alignment and possibly stop the
 	 * program from working properly.
 	 */
-	// TCP IPV4 snaplen + bpfhdr_len
-	protected capBufSize = 65535 + 18;
+	// TCP IPV4 snaplen + BPF hdr_len
+	protected capBufSize = 65535 + 24;
 	/**
 	 * Internal buffer size used by pcap to store captured bufs.
 	 */
@@ -175,6 +175,9 @@ export class Scanner {
 		this.scanners.set(ip, task);
 		task.once("stopped", () => {
 			this.scanners.delete(ip);
+		});
+		task.on("error", (e) => {
+			console.error("Scanner error", e);
 		});
 
 		return task;
