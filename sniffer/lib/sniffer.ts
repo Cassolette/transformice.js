@@ -1,5 +1,5 @@
 import { ByteArray, Client, IdentifierSplit } from "@cheeseformice/transformice.js";
-import { BulleIdentifier } from "@cheeseformice/transformice.js/dist/enums";
+import { BulleIdentifier, GameCommunity, Role } from "@cheeseformice/transformice.js/dist/enums";
 import { EventEmitter } from "./utils/emit-mod";
 import {
 	ByteArrayFactory,
@@ -20,6 +20,10 @@ export interface SessionEvents {
 	 * Emitted when a connection with the game server (bulle) is established.
 	 */
 	bulleConnect: (connection: Connection, changedFrom?: Connection) => void;
+	/**
+	 * Emitted once the message keys are successfully derived from a sent room message that is larger than 20 bytes.
+	 */
+	messageKeys: (msgKeys: number[]) => void;
 	closed: () => void;
 	error: (e: any) => void;
 }
@@ -27,6 +31,34 @@ export interface SessionEvents {
 class Session extends EventEmitter<SessionEvents> {
 	public bulle?: Connection;
 	public active: boolean;
+	/**
+	 * Player information as reported by the main server
+	 */
+	public identity?: {
+		/**
+		 * The session ID.
+		 */
+		id: number;
+		/**
+		 * The player name in this session.
+		 */
+		name: string;
+		/**
+		 * Played time in seconds.
+		 */
+		playedTime: number;
+		community: GameCommunity;
+		pcode: number;
+		roles: Set<Role>;
+	};
+
+	// Idea of Tocu tfmplugins: Attempt to reverse engineer msg keys using sent room message
+	#msgKeys?: number[];
+	#msgPacket?: { fp: number; ciphered: Buffer };
+
+	get msgKeys() {
+		return this.#msgKeys;
+	}
 
 	constructor(
 		public sniffer: Sniffer,
@@ -39,6 +71,7 @@ class Session extends EventEmitter<SessionEvents> {
 		this.active = true;
 
 		main.on("packetSent", (packetFactory) => {
+			this.handlePacketSent(main, packetFactory.create());
 			const packetMinusFp = packetFactory.create();
 			const fp = packetMinusFp.readByte();
 			this.emitSafe("packetSent", main, new ByteArrayFactory(packetMinusFp), fp);
@@ -105,18 +138,84 @@ class Session extends EventEmitter<SessionEvents> {
 
 			this.bulle = bulle;
 			bulle.on("packetSent", (packetFactory) => {
+				this.handlePacketSent(bulle, packetFactory.create());
 				const packetMinusFp = packetFactory.create();
 				const fp = packetMinusFp.readByte();
 				this.emitSafe("packetSent", bulle, new ByteArrayFactory(packetMinusFp), fp);
 			});
-			bulle.on("packetReceived", (packet) => {
-				this.emitSafe("packetReceived", bulle, packet);
+			bulle.on("packetReceived", (packetFactory) => {
+				this.handlePacketReceived(bulle, packetFactory.create());
+				this.emitSafe("packetReceived", bulle, packetFactory);
 			});
 			bulle.once("closed", () => {
 				bulle.removeAllListeners();
 				this.bulle = undefined;
 			});
 			this.emitSafe("bulleConnect", bulle, prevBulle);
+		} else if (ccc == BulleIdentifier.loggedIn && conn == this.main) {
+			const id = packet.readInt();
+			const name = packet.readUTF();
+			const playedTime = packet.readInt();
+			const community = packet.readByte();
+			const pcode = packet.readInt();
+			packet.readBoolean();
+
+			const len = packet.readByte();
+			const roles = new Set<Role>();
+			for (let i = 0; i < len; i++) {
+				roles.add(packet.readByte());
+			}
+
+			this.identity = {
+				id,
+				name,
+				playedTime,
+				community,
+				pcode,
+				roles,
+			};
+		} else if (ccc == BulleIdentifier.roomMessage && conn == this.bulle) {
+			const name = packet.readUTF();
+			if (
+				this.identity !== undefined &&
+				this.#msgKeys === undefined &&
+				this.#msgPacket !== undefined &&
+				name === this.identity.name
+			) {
+				// Idea of Tocu tfmplugins
+				// Construct what would have been a deciphered version of msgPacket
+				const deciphered = new ByteArray().writeBufBytes(packet.readBufBytes(20));
+				const xored = deciphered.xorCipher(Array.from(this.#msgPacket.ciphered), -1);
+
+				const start = (this.#msgPacket.fp + 1) % 20;
+				const last = xored.readBufBytes(20 - start);
+				const first = xored.readBufBytes(start);
+
+				this.#msgKeys = Array.from(Buffer.concat([first, last]));
+				//console.log("calculated msg keys", this.#msgKeys);
+				this.emitSafe("messageKeys", this.#msgKeys);
+			}
+		}
+	}
+
+	protected handlePacketSent(conn: Connection, packet: ByteArray) {
+		try {
+			var fp = packet.readByte();
+			var ccc = packet.readUnsignedShort();
+		} catch (e) {
+			//console.error("error readCode", e);
+			return;
+		}
+
+		if (ccc == BulleIdentifier.roomMessage && conn == this.bulle) {
+			if (
+				this.identity !== undefined &&
+				this.#msgKeys === undefined &&
+				packet.bytesAvailable >= 20
+			) {
+				//console.log("storing ciphered sent message", fp);
+				this.#msgPacket = { fp, ciphered: packet.readBufBytes(20) };
+			}
 		}
 	}
 }

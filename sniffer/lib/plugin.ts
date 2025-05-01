@@ -1,3 +1,4 @@
+import { GameCommunity, Role } from "@cheeseformice/transformice.js/dist/enums";
 import { ByteArrayFactory, Connection, ConnectionEvents, Host } from "./connection";
 import { type Session, type SessionEvents } from "./sniffer";
 import { EventEmitter } from "./utils/emit-mod";
@@ -13,6 +14,10 @@ export interface SessionProxyEvents {
 	 * Emitted when a connection with the game server (bulle) is established.
 	 */
 	bulleConnect: (connection: ConnectionProxy, changedFrom?: ConnectionProxy) => void;
+	/**
+	 * Emitted once the message keys are successfully derived from a sent room message that is larger than 20 bytes.
+	 */
+	messageKeys: (msgKeys: number[]) => void;
 	closed: () => void;
 	error: (e: Error) => void;
 }
@@ -64,7 +69,12 @@ export class SessionProxy extends EventEmitter<SessionProxyEvents> {
 			);
 		});
 
-		for (const evt of ["packetReceived", "packetSent", "error"] as (keyof SessionEvents)[]) {
+		for (const evt of [
+			"packetReceived",
+			"packetSent",
+			"messageKeys",
+			"error",
+		] as (keyof SessionEvents)[]) {
 			const listener =
 				evt === "packetReceived" || evt === "packetSent"
 					? (connection: Connection, ...args: any) => {
@@ -113,6 +123,12 @@ export class SessionProxy extends EventEmitter<SessionProxyEvents> {
 	}
 	get active() {
 		return this.isConnected && this.session.active;
+	}
+	get identity() {
+		return this.session.identity;
+	}
+	get msgKeys() {
+		return this.session.msgKeys;
 	}
 }
 

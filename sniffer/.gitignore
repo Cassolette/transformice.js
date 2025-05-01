@@ -1,4 +1,9 @@
-# Based on https://raw.githubusercontent.com/github/gitignore/main/Node.gitignore
+## Custom entries below
+user-plugin/
+user-plugin.ts
+
+## Standard entries below
+## Based on https://raw.githubusercontent.com/github/gitignore/main/Node.gitignore
 
 # Logs
 

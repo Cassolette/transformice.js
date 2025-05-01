@@ -1,4 +1,4 @@
-import { Identifier, IdentifierSplit, type ByteArray } from "@cheeseformice/transformice.js";
+import { ByteArray, Identifier, IdentifierSplit } from "@cheeseformice/transformice.js";
 import zlib from "node:zlib";
 import type { ConnectionProxy, SessionProxy, UserPlugin } from "./lib/plugin";
 
@@ -64,6 +64,23 @@ class CustomPlugin {
 		);
 
 		switch (ccc) {
+			case Identifier(6, 26): {
+				if (session.msgKeys === undefined) {
+					console.log("send command", packet.readUTF());
+					console.log(
+						"- no msg keys to decipher command, try sending a room message > 20 chars first to calculate it",
+						packet.buffer,
+					);
+				} else {
+					console.log(
+						"send command (decipher)",
+						new ByteArray(packet.readBufBytes(packet.bytesAvailable))
+							.xorCipher(session.msgKeys, fp)
+							.readUTF(),
+					);
+				}
+				break;
+			}
 			case Identifier(28, 6): {
 				console.log(
 					"s-ping send reply req id",
@@ -88,6 +105,9 @@ export default {
 		);
 		session.on("bulleConnect", (conn) => {
 			console.log("bulle connection", conn.server);
+		});
+		session.on("messageKeys", (msgKeys) => {
+			console.log("derived msg keys", msgKeys);
 		});
 		session.on("error", (e) => {
 			console.error(e);
